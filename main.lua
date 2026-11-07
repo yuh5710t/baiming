@@ -7,10 +7,8 @@ local player = Players.LocalPlayer
 
 if _G.LootAttackCleanup then pcall(_G.LootAttackCleanup) end
 
--- ================== 加载 WindUI ==================
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
--- UI 名字直接精简为“布洛克斯”和“索尼”
 local Window = WindUI:CreateWindow({
     Title = "布洛克斯",
     Icon = "crosshair",
@@ -22,30 +20,20 @@ local Window = WindUI:CreateWindow({
     NewElements = true,
 })
 
--- ================== 强制更新公告 ==================
 local dialogClosed = false
 Window:Dialog({
     Title = "更新公告",
-    Content = "【更新内容】\n1. AOE 范围全屏打怪\n2. 贴身模式：杀一只换一只\n3. 2D 方框透视（带血量）\n4. 自动互动UI",
+    Content = "【卓越级优化更新】\n1. 透视新增：头顶引线（天线）与实时距离\n2. 修复了瞬移导致模型消失的 Bug\n3. 增加武器物理锁定，绝不掉刀\n4. 优化 AOE 假伤判定",
     Buttons = {
-        {
-            Title = "确定",
-            Callback = function()
-                dialogClosed = true
-            end
-        }
+        { Title = "确定", Callback = function() dialogClosed = true end }
     }
 })
-
--- 阻塞线程，必须点确定才能往下走
 repeat task.wait(0.1) until dialogClosed
 
--- ================== 标签页 ==================
 local TabCombat = Window:Tab({ Title = "战斗", Icon = "shield" })
 local TabVisual = Window:Tab({ Title = "透视", Icon = "eye" })
 local TabAssist = Window:Tab({ Title = "辅助", Icon = "star" })
 
--- 状态变量
 local nearestEnabled = false
 local aoeEnabled = false
 local espEnabled = false
@@ -53,11 +41,10 @@ local autoInteractEnabled = false
 local originalFOV = Camera.FieldOfView
 local attackThread = nil
 local interactThread = nil
-local spinSpeed = 100
-local attackDelay = 0.05 
+local spinSpeed = 150
+local attackDelay = 0.02
 local aoeRange = 40
 
--- 屏幕中心彩框
 local gui = Instance.new("ScreenGui")
 gui.ResetOnSpawn = false
 gui.Parent = game.CoreGui
@@ -76,14 +63,13 @@ task.spawn(function()
     local hue = 0
     while gui.Parent do
         if circle.Visible then
-            hue = (hue + 0.02) % 1
+            hue = (hue + 0.05) % 1
             stroke.Color = Color3.fromHSV(hue, 1, 1)
         end
         task.wait()
     end
 end)
 
--- ================== 核心战斗线程 ==================
 local function StartAttackThread()
     if attackThread then return end
     circle.Visible = true
@@ -98,11 +84,28 @@ local function StartAttackThread()
                 local hrp = character and character:FindFirstChild("HumanoidRootPart")
                 local tool = character and character:FindFirstChildWhichIsA("Tool")
                 
+                if character and not tool then
+                    local backpack = player:FindFirstChild("Backpack")
+                    if backpack then
+                        local newTool = backpack:FindFirstChildWhichIsA("Tool")
+                        if newTool then
+                            newTool.Parent = character
+                            tool = newTool
+                        end
+                    end
+                end
+
                 if enemiesFolder and actorsFolder and hrp and tool then
                     local actorId = tool:FindFirstChild("ActorId")
                     local actor = actorId and actorsFolder:FindFirstChild(actorId.Value)
                     local remoteFunction = actor and actor:FindFirstChild("Functions") and actor.Functions:FindFirstChild("Attack")
                     
+                    local handle = tool:FindFirstChild("Handle")
+                    if handle and handle:IsA("BasePart") then
+                        handle.CanCollide = false
+                        handle.Massless = true
+                    end
+
                     if remoteFunction then
                         local targets = {}
                         for _, model in ipairs(enemiesFolder:GetChildren()) do
@@ -124,15 +127,22 @@ local function StartAttackThread()
 
                         for _, targetRoot in ipairs(targets) do
                             if not nearestEnabled and not aoeEnabled then break end
-                            local targetModel = targetRoot.Parent
-                            local targetHum = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
+                            local targetHum = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
                             if targetHum and targetHum.Health > 0 then
-                                local destination = targetRoot.Position - targetRoot.CFrame.LookVector * 1.5
-                                hrp.CFrame = CFrame.new(destination) * CFrame.Angles(0, math.rad(tick() * spinSpeed), 0)
-                                local cameraPos = hrp.Position + Vector3.new(0, 6, 0) - targetRoot.CFrame.LookVector * 5
-                                Camera.CFrame = CFrame.lookAt(cameraPos, targetRoot.Position)
+                                local dest = targetRoot.Position - (targetRoot.CFrame.LookVector * 1.5)
+                                local spinAngle = math.rad(tick() * spinSpeed)
+                                
+                                hrp.CFrame = CFrame.new(dest, targetRoot.Position) * CFrame.Angles(0, spinAngle, 0)
                                 hrp.AssemblyLinearVelocity = Vector3.zero
                                 hrp.AssemblyAngularVelocity = Vector3.zero
+                                
+                                if handle then
+                                    handle.AssemblyLinearVelocity = Vector3.zero
+                                    handle.AssemblyAngularVelocity = Vector3.zero
+                                end
+                                
+                                Camera.CFrame = CFrame.lookAt(hrp.Position + Vector3.new(0, 6, 0) - targetRoot.CFrame.LookVector * 5, targetRoot.Position)
+                                
                                 pcall(function() remoteFunction:InvokeServer() end)
                                 task.wait(attackDelay)
                             end
@@ -140,7 +150,7 @@ local function StartAttackThread()
                     end
                 end
             end)
-            task.wait(0.01)
+            RunService.Heartbeat:Wait()
         end
         circle.Visible = false
         Camera.FieldOfView = originalFOV
@@ -148,27 +158,11 @@ local function StartAttackThread()
     end)
 end
 
-TabCombat:Toggle({
-    Title = "贴身打怪",
-    Default = false,
-    Callback = function(state)
-        nearestEnabled = state
-        if state then StartAttackThread() end
-    end
-})
-
-TabCombat:Toggle({
-    Title = "范围AOE",
-    Default = false,
-    Callback = function(state)
-        aoeEnabled = state
-        if state then StartAttackThread() end
-    end
-})
-
-TabCombat:Slider({ Title = "转速", Value = { Min = 10, Max = 200, Default = 100 }, Increment = 5, Callback = function(value) spinSpeed = value end })
-TabCombat:Slider({ Title = "攻击间隔", Value = { Min = 0.01, Max = 0.2, Default = 0.05 }, Increment = 0.01, Callback = function(value) attackDelay = value end })
-TabCombat:Slider({ Title = "AOE范围", Value = { Min = 10, Max = 150, Default = 40 }, Increment = 5, Callback = function(value) aoeRange = value end })-- ================== 2D 纯方框透视模块 ==================
+TabCombat:Toggle({ Title = "贴身打怪", Default = false, Callback = function(state) nearestEnabled = state if state then StartAttackThread() end end })
+TabCombat:Toggle({ Title = "范围AOE", Default = false, Callback = function(state) aoeEnabled = state if state then StartAttackThread() end end })
+TabCombat:Slider({ Title = "转速", Value = { Min = 10, Max = 500, Default = 150 }, Increment = 10, Callback = function(value) spinSpeed = value end })
+TabCombat:Slider({ Title = "攻击间隔", Value = { Min = 0.01, Max = 0.2, Default = 0.02 }, Increment = 0.01, Callback = function(value) attackDelay = value end })
+TabCombat:Slider({ Title = "AOE范围", Value = { Min = 10, Max = 150, Default = 40 }, Increment = 5, Callback = function(value) aoeRange = value end })-- ================== 卓越级 2D 天线透视模块 ==================
 local espObjects = {}
 local function ClearESP()
     for _, object in pairs(espObjects) do
@@ -181,39 +175,56 @@ local function CreateESP(targetCharacter)
     if not targetCharacter then return end
     local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
     local rootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
-    if not humanoid or not rootPart or humanoid.Health <= 0 then return end
+    local head = targetCharacter:FindFirstChild("Head")
+    if not humanoid or not rootPart or not head or humanoid.Health <= 0 then return end
     
-    local color = Color3.fromRGB(255, 50, 50)
-
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "BoxESP"
     billboard.Adornee = rootPart
-    billboard.Size = UDim2.new(4, 0, 6, 0)
+    billboard.Size = UDim2.new(4, 0, 5.5, 0) -- 方框大小
+    billboard.StudsOffset = Vector3.new(0, 0.5, 0)
     billboard.AlwaysOnTop = true
     billboard.Parent = targetCharacter
     
+    -- 2D方框
     local frame = Instance.new("Frame", billboard)
     frame.Size = UDim2.new(1, 0, 1, 0)
     frame.BackgroundTransparency = 1
     local uiStroke = Instance.new("UIStroke", frame)
-    uiStroke.Color = color
+    uiStroke.Color = Color3.fromRGB(255, 50, 50)
     uiStroke.Thickness = 1.5
 
-    local nameTag = Instance.new("TextLabel", billboard)
-    nameTag.Size = UDim2.new(1, 0, 0, 20)
-    nameTag.Position = UDim2.new(0, 0, 1, 5)
+    -- 天线引线
+    local line = Instance.new("Frame", billboard)
+    line.Size = UDim2.new(0, 1, 0, 30)
+    line.Position = UDim2.new(0.5, 0, 0, -30)
+    line.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    line.BorderSizePixel = 0
+
+    -- 头顶文字 (名字/血量/距离)
+    local textGui = Instance.new("BillboardGui")
+    textGui.Name = "TextESP"
+    textGui.Adornee = head
+    textGui.Size = UDim2.new(0, 200, 0, 50)
+    textGui.StudsOffset = Vector3.new(0, 2.5, 0)
+    textGui.AlwaysOnTop = true
+    textGui.Parent = targetCharacter
+
+    local nameTag = Instance.new("TextLabel", textGui)
+    nameTag.Size = UDim2.new(1, 0, 1, 0)
     nameTag.BackgroundTransparency = 1
-    nameTag.Text = targetCharacter.Name .. " [" .. math.floor(humanoid.Health) .. " HP]"
-    nameTag.TextColor3 = color
+    nameTag.TextColor3 = Color3.fromRGB(255, 50, 50)
     nameTag.TextStrokeTransparency = 0.5
-    nameTag.TextSize = 12
+    nameTag.TextSize = 13
     nameTag.Font = Enum.Font.GothamBold
+    nameTag.RichText = true
 
     table.insert(espObjects, billboard)
+    table.insert(espObjects, textGui)
 end
 
 TabVisual:Toggle({
-    Title = "2D透视",
+    Title = "开启 2D 天线透视",
     Default = false,
     Callback = function(state)
         espEnabled = state
@@ -223,26 +234,34 @@ TabVisual:Toggle({
                     for _, otherPlayer in ipairs(Players:GetPlayers()) do
                         if otherPlayer ~= player and otherPlayer.Character then
                             local hasESP = false
-                            for _, object in pairs(espObjects) do
-                                if object.Adornee == otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                                    hasESP = true
-                                    break
-                                end
+                            for _, obj in pairs(espObjects) do
+                                if obj.Parent == otherPlayer.Character then hasESP = true break end
                             end
                             if not hasESP then CreateESP(otherPlayer.Character) end
                         end
                     end
-                    for _, object in pairs(espObjects) do
+                    
+                    -- 实时更新距离和血量
+                    for _, obj in pairs(espObjects) do
                         pcall(function()
-                            local char = object.Adornee and object.Adornee.Parent
-                            local hum = char and char:FindFirstChildOfClass("Humanoid")
-                            if hum then
-                                local nameTag = object:FindFirstChildOfClass("TextLabel")
-                                if nameTag then nameTag.Text = char.Name .. " [" .. math.floor(hum.Health) .. " HP]" end
+                            if obj.Name == "TextESP" then
+                                local char = obj.Adornee and obj.Adornee.Parent
+                                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                                local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                                local charRoot = char and char:FindFirstChild("HumanoidRootPart")
+                                
+                                if hum and hrp and charRoot then
+                                    local dist = math.floor((hrp.Position - charRoot.Position).Magnitude)
+                                    local hp = math.floor(hum.Health)
+                                    local label = obj:FindFirstChildOfClass("TextLabel")
+                                    if label then
+                                        label.Text = string.format("<font color='#00FF00'>[%d m]</font> %s [<font color='#FF3333'>%d HP</font>]", dist, char.Name, hp)
+                                    end
+                                end
                             end
                         end)
                     end
-                    task.wait(0.5)
+                    task.wait(0.1)
                 end
             end)
         else
@@ -251,7 +270,7 @@ TabVisual:Toggle({
     end
 })
 
--- ================== 自动互动 UI 模块 ==================
+-- ================== 自动互动 ==================
 TabAssist:Toggle({
     Title = "自动互动",
     Default = false,
