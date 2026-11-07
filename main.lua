@@ -3,276 +3,248 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local Camera = Workspace.CurrentCamera
 
 local player = Players.LocalPlayer
 
--- ================== 白名单 ==================
-local WHITELIST = {
-	["wswswsdddxf"] = true,
-	["yuh5710t"] = true,
-}
+-- ================== 高级加载动画 ==================
+if CoreGui:FindFirstChild("PremiumLoadingScreen") then CoreGui.PremiumLoadingScreen:Destroy() end
 
-if not WHITELIST[player.Name] then
-	warn("[传送攻击] 你不是白名单用户，脚本已停止。")
-	return
-end
--- ============================================
+local LoadingGui = Instance.new("ScreenGui")
+LoadingGui.Name = "PremiumLoadingScreen"
+LoadingGui.IgnoreGuiInset = true
+LoadingGui.DisplayOrder = 9999
+LoadingGui.Parent = CoreGui
 
-local enemies = Workspace:WaitForChild("Runtime"):WaitForChild("Enemies")
-local actors = ReplicatedStorage:WaitForChild("Runtime"):WaitForChild("Actors")
+-- 纯黑背景
+local BgFrame = Instance.new("Frame", LoadingGui)
+BgFrame.Size = UDim2.new(1, 0, 1, 0)
+BgFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+BgFrame.BackgroundTransparency = 1
+TweenService:Create(BgFrame, TweenInfo.new(0.4), {BackgroundTransparency = 0}):Play()
 
--- nil = 攻击全部怪物；只打指定怪可改为：{ ["1_1_5"] = true }
-local TARGET_NAMES = nil
-local ATTACK_DISTANCE = 4
+-- 主容器
+local Box = Instance.new("Frame", BgFrame)
+Box.Size = UDim2.new(0, 260, 0, 100)
+Box.Position = UDim2.new(0.5, -130, 0.5, -50)
+Box.BackgroundTransparency = 1
+Box.Parent = BgFrame
 
-if _G.TeleportAttackCleanup then
-	pcall(_G.TeleportAttackCleanup)
-end
+-- 标题（极简白字）
+local Title = Instance.new("TextLabel", Box)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Position = UDim2.new(0, 0, 0, 10)
+Title.BackgroundTransparency = 1
+Title.Text = "L O A D I N G"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamMedium
+Title.TextSize = 16
+Title.TextTransparency = 1
+Title.TextXAlignment = Enum.TextXAlignment.Center
+TweenService:Create(Title, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
 
-local enabled = false
-local closed = false
-local currentTarget = nil
-local connections = {}
+-- 进度条底槽
+local BarBg = Instance.new("Frame", Box)
+BarBg.Size = UDim2.new(0, 200, 0, 2)
+BarBg.Position = UDim2.new(0.5, -100, 0, 60)
+BarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+BarBg.BorderSizePixel = 0
+Instance.new("UICorner", BarBg).CornerRadius = UDim.new(1, 0)
 
-local oldGui = CoreGui:FindFirstChild("TeleportAttackGui")
-if oldGui then
-	oldGui:Destroy()
-end
+-- 进度条填色（带一点渐变流光）
+local BarFill = Instance.new("Frame", BarBg)
+BarFill.Size = UDim2.new(0, 0, 1, 0)
+BarFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+BarFill.BorderSizePixel = 0
+Instance.new("UICorner", BarFill).CornerRadius = UDim.new(1, 0)
 
+local FillGradient = Instance.new("UIGradient", BarFill)
+FillGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(150, 150, 150)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+})
+
+-- 进度条动画
+TweenService:Create(BarFill, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    Size = UDim2.new(1, 0, 1, 0)
+}):Play()
+
+-- 底部小字
+local SubTitle = Instance.new("TextLabel", Box)
+SubTitle.Size = UDim2.new(1, 0, 0, 20)
+SubTitle.Position = UDim2.new(0, 0, 0, 72)
+SubTitle.BackgroundTransparency = 1
+SubTitle.Text = "Initializing modules..."
+SubTitle.TextColor3 = Color3.fromRGB(120, 120, 130)
+SubTitle.Font = Enum.Font.Gotham
+SubTitle.TextSize = 12
+SubTitle.TextTransparency = 1
+SubTitle.TextXAlignment = Enum.TextXAlignment.Center
+TweenService:Create(SubTitle, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
+
+-- 等待进度条走完，淡出关闭
+task.wait(2)
+TweenService:Create(BgFrame, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+TweenService:Create(Title, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+TweenService:Create(SubTitle, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+task.wait(0.4)
+LoadingGui:Destroy()
+
+-- ================== 加载 WindUI ==================
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+    Title = "布洛克斯战利品",
+    Icon = "crosshair",
+    Author = "自转锁怪版",
+    Folder = "LootAttack",
+    Size = UDim2.fromOffset(480, 400),
+    Transparent = true,
+    Theme = "Dark",
+    NewElements = true,
+})
+
+local Tab = Window:Tab({ Title = "自转战斗", Icon = "shield" })
+
+-- ================== 状态变量 ==================
+local aimbotEnabled = false
+local originalFOV = Camera.FieldOfView
+local attackThread = nil
+local spinSpeed = 80
+local attackDelay = 0.001
+
+-- ================== 屏幕正中心的圆形彩虹框 ==================
 local gui = Instance.new("ScreenGui")
-gui.Name = "TeleportAttackGui"
+gui.Name = "CircleLockUI"
 gui.ResetOnSpawn = false
-gui.Parent = CoreGui
+gui.IgnoreGuiInset = true
+gui.Parent = game.CoreGui
 
-local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(310, 155)
-main.Position = UDim2.new(0.5, -155, 0.35, 0)
-main.BackgroundColor3 = Color3.fromRGB(24, 26, 31)
-main.BorderSizePixel = 0
-main.Active = true
-main.Draggable = true
-main.Parent = gui
+local circle = Instance.new("Frame", gui)
+circle.Size = UDim2.fromOffset(200, 200)
+circle.AnchorPoint = Vector2.new(0.5, 0.5)
+circle.Position = UDim2.new(0.5, 0, 0.5, 0)
+circle.BackgroundTransparency = 1
+circle.Visible = false
+Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = main
+local stroke = Instance.new("UIStroke", circle)
+stroke.Thickness = 2
+stroke.Color = Color3.fromRGB(255, 0, 0)
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 0, 35)
-title.Position = UDim2.fromOffset(10, 5)
-title.BackgroundTransparency = 1
-title.Text = "传送攻击"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.TextSize = 18
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = main
+local dot = Instance.new("Frame", circle)
+dot.Size = UDim2.fromOffset(6, 6)
+dot.AnchorPoint = Vector2.new(0.5, 0.5)
+dot.Position = UDim2.new(0.5, 0, 0.5, 0)
+dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
-local targetLabel = Instance.new("TextLabel")
-targetLabel.Size = UDim2.new(1, -20, 0, 25)
-targetLabel.Position = UDim2.fromOffset(10, 42)
-targetLabel.BackgroundTransparency = 1
-targetLabel.Text = "目标：无"
-targetLabel.TextColor3 = Color3.fromRGB(180, 200, 255)
-targetLabel.TextSize = 14
-targetLabel.Font = Enum.Font.Gotham
-targetLabel.TextXAlignment = Enum.TextXAlignment.Left
-targetLabel.Parent = main
-
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 25)
-statusLabel.Position = UDim2.fromOffset(10, 68)
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "状态：已停止"
-statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-statusLabel.TextSize = 14
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.Parent = main
-
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(1, -20, 0, 40)
-toggleButton.Position = UDim2.fromOffset(10, 103)
-toggleButton.BackgroundColor3 = Color3.fromRGB(40, 160, 90)
-toggleButton.Text = "开始"
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextSize = 17
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.Parent = main
-
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0, 6)
-buttonCorner.Parent = toggleButton
-
-local function setStatus(text)
-	statusLabel.Text = "状态：" .. text
-end
-
-local function getRootPart(model)
-	if not model then
-		return nil
-	end
-	if model.PrimaryPart then
-		return model.PrimaryPart
-	end
-	return model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("RootPart")
-		or model:FindFirstChildWhichIsA("BasePart")
-end
-
-local function isAlive(model)
-	if not model or not model.Parent or not model:IsA("Model") then
-		return false
-	end
-	if TARGET_NAMES and not TARGET_NAMES[model.Name] then
-		return false
-	end
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	return humanoid and humanoid.Health > 0 and getRootPart(model) ~= nil
-end
-
-local function getCharacterRoot()
-	local character = player.Character
-	return character and character:FindFirstChild("HumanoidRootPart")
-end
-
-local function findNearestTarget()
-	local characterRoot = getCharacterRoot()
-	if not characterRoot then
-		return nil
-	end
-
-	local nearest = nil
-	local nearestDistance = math.huge
-
-	for _, model in ipairs(enemies:GetChildren()) do
-		if isAlive(model) then
-			local rootPart = getRootPart(model)
-			local distance = (rootPart.Position - characterRoot.Position).Magnitude
-			if distance < nearestDistance then
-				nearest = model
-				nearestDistance = distance
-			end
-		end
-	end
-
-	return nearest
-end
-
-local function getAttackRemote()
-	local character = player.Character
-	local tool = character and character:FindFirstChildWhichIsA("Tool")
-	if not tool then
-		return nil, "请先装备武器"
-	end
-
-	local actorId = tool:FindFirstChild("ActorId")
-	if not actorId then
-		return nil, "当前武器缺少 ActorId"
-	end
-
-	local actor = actors:FindFirstChild(actorId.Value)
-	local functions = actor and actor:FindFirstChild("Functions")
-	local remote = functions and functions:FindFirstChild("Attack")
-
-	if remote and remote:IsA("RemoteFunction") then
-		return remote
-	end
-
-	return nil, "正在等待武器 Attack"
-end
-
-table.insert(connections, RunService.Heartbeat:Connect(function()
-	if not enabled then
-		return
-	end
-
-	local characterRoot = getCharacterRoot()
-	if not characterRoot then
-		setStatus("等待角色加载")
-		return
-	end
-
-	if not isAlive(currentTarget) then
-		currentTarget = findNearestTarget()
-	end
-
-	if not currentTarget then
-		targetLabel.Text = "目标：无"
-		setStatus("没有找到存活怪物")
-		return
-	end
-
-	local targetRoot = getRootPart(currentTarget)
-	local destination = targetRoot.Position - targetRoot.CFrame.LookVector * ATTACK_DISTANCE
-
-	characterRoot.CFrame = CFrame.lookAt(destination, targetRoot.Position)
-	characterRoot.AssemblyLinearVelocity = Vector3.zero
-	characterRoot.AssemblyAngularVelocity = Vector3.zero
-
-	local humanoid = currentTarget:FindFirstChildOfClass("Humanoid")
-	targetLabel.Text = string.format(
-		"目标：%s  %.0f/%.0f",
-		currentTarget.Name,
-		humanoid.Health,
-		humanoid.MaxHealth
-	)
-end))
-
-table.insert(connections, toggleButton.MouseButton1Click:Connect(function()
-	enabled = not enabled
-	currentTarget = nil
-
-	if enabled then
-		toggleButton.Text = "停止"
-		toggleButton.BackgroundColor3 = Color3.fromRGB(200, 65, 65)
-		setStatus("运行中")
-	else
-		toggleButton.Text = "开始"
-		toggleButton.BackgroundColor3 = Color3.fromRGB(40, 160, 90)
-		targetLabel.Text = "目标：无"
-		setStatus("已停止")
-	end
-end))
-
-table.insert(connections, player.CharacterAdded:Connect(function()
-	currentTarget = nil
-end))
-
+-- 彩虹流光
 task.spawn(function()
-	while not closed do
-		if enabled and isAlive(currentTarget) then
-			local remote, err = getAttackRemote()
-			if remote then
-				-- 每帧异步攻击，不等待上一次 InvokeServer 返回
-				task.spawn(function()
-					local ok, invokeError = pcall(function()
-						remote:InvokeServer()
-					end)
-					if ok then
-						setStatus("最大速度传送攻击中")
-					else
-						setStatus("攻击调用失败：" .. tostring(invokeError))
-					end
-				end)
-			else
-				setStatus(err)
-			end
-		end
-
-		RunService.Heartbeat:Wait()
-	end
+    local hue = 0
+    while task.wait() do
+        if circle.Visible then
+            hue = (hue + 0.015) % 1
+            stroke.Color = Color3.fromHSV(hue, 1, 1)
+            dot.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+        end
+    end
 end)
 
-_G.TeleportAttackCleanup = function()
-	closed = true
-	enabled = false
-	currentTarget = nil
-	for _, connection in ipairs(connections) do
-		connection:Disconnect()
-	end
-	gui:Destroy()
-	if _G.TeleportAttackCleanup then
-		_G.TeleportAttackCleanup = nil
-	end
+-- ================== 菜单设置 ==================
+Tab:Toggle({
+    Title = "开启自转打怪",
+    Default = false,
+    Callback = function(state)
+        aimbotEnabled = state
+        circle.Visible = state
+        Camera.FieldOfView = state and 100 or originalFOV
+        
+        if state and not attackThread then
+            attackThread = task.spawn(function()
+                while aimbotEnabled do
+                    local runtime = Workspace:FindFirstChild("Runtime")
+                    local enemiesFolder = runtime and runtime:FindFirstChild("Enemies")
+                    local actorsFolder = ReplicatedStorage:FindFirstChild("Runtime") and ReplicatedStorage.Runtime:FindFirstChild("Actors")
+                    
+                    local char = player.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local tool = char and char:FindFirstChildWhichIsA("Tool")
+                    
+                    if enemiesFolder and actorsFolder and hrp and tool then
+                        local actorId = tool:FindFirstChild("ActorId")
+                        local actor = actorId and actorsFolder:FindFirstChild(actorId.Value)
+                        local remote = actor and actor:FindFirstChild("Functions") and actor.Functions:FindFirstChild("Attack")
+                        
+                        if remote then
+                            local nearest, minDist = nil, math.huge
+                            for _, model in ipairs(enemiesFolder:GetChildren()) do
+                                local hum = model:FindFirstChildOfClass("Humanoid")
+                                local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("RootPart")
+                                if hum and hum.Health > 0 and root then
+                                    local dist = (root.Position - hrp.Position).Magnitude
+                                    if dist < minDist then
+                                        nearest, minDist = model, dist
+                                    end
+                                end
+                            end
+                            
+                            if nearest then
+                                local targetRoot = nearest:FindFirstChild("HumanoidRootPart") or nearest:FindFirstChild("RootPart")
+                                if targetRoot then
+                                    -- 贴脸
+                                    local dest = targetRoot.Position - targetRoot.CFrame.LookVector * 1.5
+                                    
+                                    -- 人物自转
+                                    local spinAngle = math.rad(tick() * spinSpeed)
+                                    hrp.CFrame = CFrame.new(dest) * CFrame.Angles(0, spinAngle, 0)
+                                    
+                                    -- 镜头死锁怪物（不跟着人转）
+                                    local camPos = dest + Vector3.new(0, 8, 0) - targetRoot.CFrame.LookVector * 6
+                                    Camera.CFrame = CFrame.lookAt(camPos, targetRoot.Position)
+                                    
+                                    -- 清空速度
+                                    hrp.AssemblyLinearVelocity = Vector3.zero
+                                    hrp.AssemblyAngularVelocity = Vector3.zero
+                                    
+                                    -- 极速发包
+                                    pcall(function()
+                                        remote:InvokeServer()
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(attackDelay)
+                end
+            end)
+        elseif not state and attackThread then
+            task.cancel(attackThread)
+            attackThread = nil
+        end
+    end
+})
+
+Tab:Slider({
+    Title = "人物自转速度",
+    Value = { Min = 10, Max = 150, Default = 80 },
+    Increment = 5,
+    Callback = function(value) spinSpeed = value end
+})
+
+Tab:Slider({
+    Title = "攻击间隔 (秒)",
+    Value = { Min = 0.001, Max = 0.1, Default = 0.001 },
+    Increment = 0.001,
+    Callback = function(value) attackDelay = value end
+})
+
+-- ================== 清理函数 ==================
+_G.LootAttackCleanup = function()
+    aimbotEnabled = false
+    if attackThread then task.cancel(attackThread) end
+    Camera.FieldOfView = originalFOV
+    if gui then gui:Destroy() end
+    _G.LootAttackCleanup = nil
 end
