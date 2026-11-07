@@ -8,74 +8,58 @@ local Camera = Workspace.CurrentCamera
 
 local player = Players.LocalPlayer
 
--- ================== 高级加载动画 ==================
-if CoreGui:FindFirstChild("PremiumLoadingScreen") then CoreGui.PremiumLoadingScreen:Destroy() end
-
+-- ================== 加载动画 (布洛克斯战利品) ==================
+if CoreGui:FindFirstChild("BlocksLoadingScreen") then CoreGui.BlocksLoadingScreen:Destroy() end
 local LoadingGui = Instance.new("ScreenGui")
-LoadingGui.Name = "PremiumLoadingScreen"
+LoadingGui.Name = "BlocksLoadingScreen"
 LoadingGui.IgnoreGuiInset = true
 LoadingGui.DisplayOrder = 9999
 LoadingGui.Parent = CoreGui
 
--- 纯黑背景
 local BgFrame = Instance.new("Frame", LoadingGui)
 BgFrame.Size = UDim2.new(1, 0, 1, 0)
 BgFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 BgFrame.BackgroundTransparency = 1
 TweenService:Create(BgFrame, TweenInfo.new(0.4), {BackgroundTransparency = 0}):Play()
 
--- 主容器
 local Box = Instance.new("Frame", BgFrame)
-Box.Size = UDim2.new(0, 260, 0, 100)
-Box.Position = UDim2.new(0.5, -130, 0.5, -50)
+Box.Size = UDim2.new(0, 300, 0, 120)
+Box.Position = UDim2.new(0.5, -150, 0.5, -60)
 Box.BackgroundTransparency = 1
 Box.Parent = BgFrame
 
--- 标题（极简白字）
 local Title = Instance.new("TextLabel", Box)
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.Position = UDim2.new(0, 0, 0, 10)
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Position = UDim2.new(0, 0, 0, 20)
 Title.BackgroundTransparency = 1
-Title.Text = "L O A D I N G"
+Title.Text = "布洛克斯战利品"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamMedium
-Title.TextSize = 16
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 24
 Title.TextTransparency = 1
 Title.TextXAlignment = Enum.TextXAlignment.Center
 TweenService:Create(Title, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
 
--- 进度条底槽
 local BarBg = Instance.new("Frame", Box)
-BarBg.Size = UDim2.new(0, 200, 0, 2)
-BarBg.Position = UDim2.new(0.5, -100, 0, 60)
-BarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+BarBg.Size = UDim2.new(0, 220, 0, 2)
+BarBg.Position = UDim2.new(0.5, -110, 0, 80)
+BarBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 BarBg.BorderSizePixel = 0
 Instance.new("UICorner", BarBg).CornerRadius = UDim.new(1, 0)
 
--- 进度条填色（带一点渐变流光）
 local BarFill = Instance.new("Frame", BarBg)
 BarFill.Size = UDim2.new(0, 0, 1, 0)
 BarFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 BarFill.BorderSizePixel = 0
 Instance.new("UICorner", BarFill).CornerRadius = UDim.new(1, 0)
 
-local FillGradient = Instance.new("UIGradient", BarFill)
-FillGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(150, 150, 150)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-})
+TweenService:Create(BarFill, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)}):Play()
 
--- 进度条动画
-TweenService:Create(BarFill, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-    Size = UDim2.new(1, 0, 1, 0)
-}):Play()
-
--- 底部小字
 local SubTitle = Instance.new("TextLabel", Box)
 SubTitle.Size = UDim2.new(1, 0, 0, 20)
-SubTitle.Position = UDim2.new(0, 0, 0, 72)
+SubTitle.Position = UDim2.new(0, 0, 0, 92)
 SubTitle.BackgroundTransparency = 1
-SubTitle.Text = "Initializing modules..."
+SubTitle.Text = "Loot Attack Loading..."
 SubTitle.TextColor3 = Color3.fromRGB(120, 120, 130)
 SubTitle.Font = Enum.Font.Gotham
 SubTitle.TextSize = 12
@@ -83,7 +67,6 @@ SubTitle.TextTransparency = 1
 SubTitle.TextXAlignment = Enum.TextXAlignment.Center
 TweenService:Create(SubTitle, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
 
--- 等待进度条走完，淡出关闭
 task.wait(2)
 TweenService:Create(BgFrame, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
 TweenService:Create(Title, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
@@ -113,6 +96,7 @@ local originalFOV = Camera.FieldOfView
 local attackThread = nil
 local spinSpeed = 80
 local attackDelay = 0.001
+local safeDistance = 6 
 
 -- ================== 屏幕正中心的圆形彩虹框 ==================
 local gui = Instance.new("ScreenGui")
@@ -140,7 +124,6 @@ dot.Position = UDim2.new(0.5, 0, 0.5, 0)
 dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
--- 彩虹流光
 task.spawn(function()
     local hue = 0
     while task.wait() do
@@ -152,9 +135,17 @@ task.spawn(function()
     end
 end)
 
+-- ================== 获取怪物碰撞箱 ==================
+local function GetEnemyCollision(rootPart)
+    if not rootPart then return nil end
+    local model = rootPart.Parent
+    local cf, size = model:GetBoundingBox()
+    return cf, size
+end
+
 -- ================== 菜单设置 ==================
 Tab:Toggle({
-    Title = "开启自转打怪",
+    Title = "开启自转打怪 (含碰撞躲闪)",
     Default = false,
     Callback = function(state)
         aimbotEnabled = state
@@ -193,25 +184,24 @@ Tab:Toggle({
                             if nearest then
                                 local targetRoot = nearest:FindFirstChild("HumanoidRootPart") or nearest:FindFirstChild("RootPart")
                                 if targetRoot then
-                                    -- 贴脸
-                                    local dest = targetRoot.Position - targetRoot.CFrame.LookVector * 1.5
+                                    local _, enemySize = GetEnemyCollision(targetRoot)
+                                    local currentSafeDist = math.max(enemySize.X, enemySize.Z) / 2 + safeDistance
+                                    local distToTarget = (targetRoot.Position - hrp.Position).Magnitude
                                     
-                                    -- 人物自转
-                                    local spinAngle = math.rad(tick() * spinSpeed)
-                                    hrp.CFrame = CFrame.new(dest) * CFrame.Angles(0, spinAngle, 0)
+                                    if distToTarget < currentSafeDist then
+                                        hrp.CFrame = targetRoot.CFrame * CFrame.new(0, 0, currentSafeDist)
+                                    else
+                                        local dest = targetRoot.Position - targetRoot.CFrame.LookVector * 1.5
+                                        local spinAngle = math.rad(tick() * spinSpeed)
+                                        hrp.CFrame = CFrame.new(dest) * CFrame.Angles(0, spinAngle, 0)
+                                    end
                                     
-                                    -- 镜头死锁怪物（不跟着人转）
-                                    local camPos = dest + Vector3.new(0, 8, 0) - targetRoot.CFrame.LookVector * 6
+                                    local camPos = hrp.Position + Vector3.new(0, 8, 0) - targetRoot.CFrame.LookVector * 6
                                     Camera.CFrame = CFrame.lookAt(camPos, targetRoot.Position)
                                     
-                                    -- 清空速度
                                     hrp.AssemblyLinearVelocity = Vector3.zero
                                     hrp.AssemblyAngularVelocity = Vector3.zero
-                                    
-                                    -- 极速发包
-                                    pcall(function()
-                                        remote:InvokeServer()
-                                    end)
+                                    pcall(function() remote:InvokeServer() end)
                                 end
                             end
                         end
@@ -238,6 +228,13 @@ Tab:Slider({
     Value = { Min = 0.001, Max = 0.1, Default = 0.001 },
     Increment = 0.001,
     Callback = function(value) attackDelay = value end
+})
+
+Tab:Slider({
+    Title = "躲闪安全距离",
+    Value = { Min = 2, Max = 15, Default = 6 },
+    Increment = 1,
+    Callback = function(value) safeDistance = value end
 })
 
 -- ================== 清理函数 ==================
