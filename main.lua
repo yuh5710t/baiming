@@ -23,7 +23,7 @@ local Window = WindUI:CreateWindow({
 local dialogClosed = false
 Window:Dialog({
     Title = "优化更新",
-    Content = "1. 优化了极速攻击的卡顿问题\n2. 降低了渲染压力，手机更流畅\n3. 透视天线完美修复",
+    Content = "1. 彻底修复关闭后依然疯狂传送的问题\n2. 重新设计中心锁定准星（红色方框）\n3. 锁定目标后死磕到底",
     Buttons = { { Title = "确定", Callback = function() dialogClosed = true end } }
 })
 repeat task.wait(0.1) until dialogClosed
@@ -44,35 +44,38 @@ local attackDelay = 0.03
 local aoeRange = 40
 local currentTarget = nil
 
--- 屏幕彩圈
+-- ================== 中心红色锁定准星（代替彩虹圈） ==================
 local gui = Instance.new("ScreenGui")
 gui.ResetOnSpawn = false
 gui.Parent = game.CoreGui
-local circle = Instance.new("Frame", gui)
-circle.Size = UDim2.fromOffset(200, 200)
-circle.AnchorPoint = Vector2.new(0.5, 0.5)
-circle.Position = UDim2.new(0.5, 0, 0.5, 0)
-circle.BackgroundTransparency = 1
-circle.Visible = false
-Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
-local stroke = Instance.new("UIStroke", circle)
-stroke.Thickness = 2
-stroke.Color = Color3.fromRGB(255, 0, 0)
 
-task.spawn(function()
-    local hue = 0
-    while gui.Parent do
-        if circle.Visible then
-            hue = (hue + 0.05) % 1
-            stroke.Color = Color3.fromHSV(hue, 1, 1)
-        end
-        task.wait(0.05)
-    end
-end)
+local lockBox = Instance.new("Frame", gui)
+lockBox.Size = UDim2.fromOffset(100, 100) -- 锁定方框大小
+lockBox.AnchorPoint = Vector2.new(0.5, 0.5)
+lockBox.Position = UDim2.new(0.5, 0, 0.5, 0)
+lockBox.BackgroundTransparency = 1
+lockBox.Visible = false
 
+local boxStroke = Instance.new("UIStroke", lockBox)
+boxStroke.Thickness = 2
+boxStroke.Color = Color3.fromRGB(255, 0, 0) -- 红色准星
+
+-- 准星中心点
+local dot = Instance.new("Frame", lockBox)
+dot.Size = UDim2.fromOffset(4, 4)
+dot.AnchorPoint = Vector2.new(0.5, 0.5)
+dot.Position = UDim2.new(0.5, 0, 0.5, 0)
+dot.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+-- 核心战斗（修复了关闭后发疯的Bug）
 local function StartAttackThread()
-    if attackThread then return end
-    circle.Visible = true
+    if attackThread then
+        pcall(function() task.cancel(attackThread) end)
+        attackThread = nil
+    end
+    
+    lockBox.Visible = true
     Camera.FieldOfView = 100
     
     attackThread = task.spawn(function()
@@ -101,6 +104,7 @@ local function StartAttackThread()
                     table.sort(allEnemies, function(a, b) return a.dist < b.dist end)
 
                     if nearestEnabled then
+                        -- 锁定死磕机制
                         if not currentTarget or currentTarget.hum.Health <= 0 or not currentTarget.root.Parent then
                             currentTarget = allEnemies[1]
                         end
@@ -139,17 +143,39 @@ local function StartAttackThread()
             end)
             RunService.Heartbeat:Wait()
         end
-        circle.Visible = false
+        lockBox.Visible = false
         Camera.FieldOfView = originalFOV
         attackThread = nil
     end)
 end
 
-TabCombat:Toggle({ Title = "贴身死磕 (2米内)", Default = false, Callback = function(state) nearestEnabled = state currentTarget = nil if state then StartAttackThread() end end })
-TabCombat:Toggle({ Title = "范围群伤 (AOE)", Default = false, Callback = function(state) aoeEnabled = state if state then StartAttackThread() end end })
+TabCombat:Toggle({ Title = "贴身死磕 (锁定最近)", Default = false, Callback = function(state) 
+    nearestEnabled = state 
+    currentTarget = nil 
+    if state then StartAttackThread() else 
+        if not aoeEnabled then
+            if attackThread then pcall(function() task.cancel(attackThread) end) attackThread = nil end
+            lockBox.Visible = false
+            Camera.FieldOfView = originalFOV
+        end
+    end 
+end })
+
+TabCombat:Toggle({ Title = "范围群伤 (AOE)", Default = false, Callback = function(state) 
+    aoeEnabled = state 
+    if state then StartAttackThread() else 
+        if not nearestEnabled then
+            if attackThread then pcall(function() task.cancel(attackThread) end) attackThread = nil end
+            lockBox.Visible = false
+            Camera.FieldOfView = originalFOV
+        end
+    end 
+end })
+
 TabCombat:Slider({ Title = "自转速度", Value = { Min = 10, Max = 500, Default = 150 }, Increment = 10, Callback = function(value) spinSpeed = value end })
 TabCombat:Slider({ Title = "AOE攻击间隔", Value = { Min = 0.01, Max = 0.2, Default = 0.03 }, Increment = 0.01, Callback = function(value) attackDelay = value end })
-TabCombat:Slider({ Title = "AOE范围", Value = { Min = 10, Max = 150, Default = 40 }, Increment = 5, Callback = function(value) aoeRange = value end })local espObjects = {}
+TabCombat:Slider({ Title = "AOE范围", Value = { Min = 10, Max = 150, Default = 40 }, Increment = 5, Callback = function(value) aoeRange = value end })-- ================== 视觉透视模块 ==================
+local espObjects = {}
 local function ClearESP()
     for _, object in pairs(espObjects) do
         if object and object.Parent then object:Destroy() end
@@ -164,7 +190,6 @@ local function CreateESP(targetCharacter)
     local head = targetCharacter:FindFirstChild("Head")
     if not humanoid or not rootPart or not head or humanoid.Health <= 0 then return end
     
-    -- 2D方框
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "BoxESP"
     billboard.Adornee = rootPart
@@ -179,14 +204,12 @@ local function CreateESP(targetCharacter)
     uiStroke.Color = Color3.fromRGB(0, 255, 0)
     uiStroke.Thickness = 1.5
 
-    -- 天线射线
     local ray = Instance.new("Frame", billboard)
     ray.Size = UDim2.new(0, 1, 0, 80)
     ray.Position = UDim2.new(0.5, 0, 0, -80)
     ray.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
     ray.BorderSizePixel = 0
 
-    -- 顶部文字
     local textGui = Instance.new("BillboardGui")
     textGui.Name = "TextESP"
     textGui.Adornee = head
@@ -209,7 +232,7 @@ local function CreateESP(targetCharacter)
 end
 
 TabVisual:Toggle({
-    Title = "开启 2D 天线射线透视",
+    Title = "开启 2D 天线透视",
     Default = false,
     Callback = function(state)
         espEnabled = state
@@ -245,7 +268,7 @@ TabVisual:Toggle({
                             end
                         end)
                     end
-                    task.wait(0.5) -- 降低刷新频率，防止卡顿
+                    task.wait(0.5)
                 end
             end)
         else
@@ -254,8 +277,9 @@ TabVisual:Toggle({
     end
 })
 
+-- ================== 自动互动 ==================
 TabAssist:Toggle({
-    Title = "自动点击互动UI",
+    Title = "自动互动",
     Default = false,
     Callback = function(state)
         autoInteractEnabled = state
@@ -289,6 +313,7 @@ TabAssist:Toggle({
     end
 })
 
+-- ================== 清理函数 ==================
 _G.LootAttackCleanup = function()
     nearestEnabled = false
     aoeEnabled = false
